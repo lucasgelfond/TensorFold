@@ -15,6 +15,7 @@ const controls = [_]Control{
     .{ .kind = .messages, .name = "control: inkling2 loop messages use unnormalized values", .from = "coef[q][s] = (score[s] / l) * inv_tg[s];", .to = "coef[q][s] = score[s] / l;" },
     .{ .kind = .down, .name = "control: inkling2 loop controller drops message half of down projection", .from = "fma(float(wr[ulong(j) * 2 * H + H + i]), xm[e], acc[j])", .to = "fma(float(wr[ulong(j) * 2 * H + i]), xm[e], acc[j])" },
     .{ .kind = .qkv, .name = "control: inkling2 loop controller adds forget gate", .from = "1.0f - metal::precise::tanh(f)", .to = "1.0f + metal::precise::tanh(f)" },
+    .{ .kind = .qkv, .name = "control: inkling2 loop controller wide loads read the high half twice", .from = "(fk << 16)", .to = "(fk & 0xffff0000u)" },
     .{ .kind = .mlp, .name = "control: inkling2 loop MLP reads query message", .from = "return g == 0 ? a.slot0", .to = "return g == 0 ? 0" },
 };
 

@@ -47,10 +47,11 @@ const GateKernelArgs = extern struct {
     out_stride: u32,
     eps_unweighted: f32,
     eps_norm: f32,
+    wide: u32 = 0,
 };
 
 comptime {
-    std.debug.assert(@sizeOf(MixKernelArgs) == 40 and @sizeOf(GateKernelArgs) == 40);
+    std.debug.assert(@sizeOf(MixKernelArgs) == 40 and @sizeOf(GateKernelArgs) == 44);
 }
 
 pub const Error = error{InvalidLoopOp};
@@ -202,10 +203,16 @@ pub const Ops = struct {
             .out_stride = a.out_stride,
             .eps_unweighted = 0,
             .eps_norm = a.eps,
+            .wide = @intFromBool(a.rank % 8 == 0 and aligned16(a.forget, a.gates) and aligned16(a.gain, a.gates)),
         }, 15);
         e.dispatchGroups(mtl.Size.of(a.rows, a.gates, 1), mtl.Size.of(256, 1, 1));
     }
 };
+
+fn aligned16(views: [max_gates]View, gates: u32) bool {
+    for (views[0..gates]) |v| if (v.offset % 16 != 0) return false;
+    return true;
+}
 
 fn bind(e: mtl.ComputeEncoder, views: []const View) void {
     for (views, 0..) |v, i| e.setBuffer(v.buffer, v.offset, i);

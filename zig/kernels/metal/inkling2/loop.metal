@@ -108,6 +108,7 @@ struct LpGateArgs {
   uint hidden, rank, rows, msg_stride;
   uint slot0, slot1, slot2, out_stride;
   float eps_unweighted, eps_norm;
+  uint wide;  // forget and gain rows are 16-byte aligned and rank % 8 == 0: read them eight at a time
 };
 
 inline uint lp_slot(constant LpGateArgs& a, uint g) { return g == 0 ? a.slot0 : (g == 1 ? a.slot1 : a.slot2); }
@@ -200,9 +201,23 @@ inline uint lp_slot(constant LpGateArgs& a, uint g) { return g == 0 ? a.slot0 : 
     float v = 0.0f;
     if (i < H) {
       float f = 0.0f, gn = 0.0f;
-      for (uint r = 0; r < R; ++r) {
-        f = fma(float(wf[ulong(i) * R + r]), dn[r], f);
-        gn = fma(float(wg[ulong(i) * R + r]), dn[r], gn);
+      if (a.wide != 0) {
+        const device uint4* fv = (const device uint4*)(wf + ulong(i) * R);
+        const device uint4* gv = (const device uint4*)(wg + ulong(i) * R);
+        for (uint c = 0; c < R / 8u; ++c) {
+          const uint4 fw = fv[c], gw = gv[c];
+          const uint fa[4] = {fw.x, fw.y, fw.z, fw.w}, ga[4] = {gw.x, gw.y, gw.z, gw.w};
+          for (uint k = 0; k < 8u; ++k) {
+            const uint fk = fa[k >> 1], gk = ga[k >> 1];
+            f = fma(as_type<float>((k & 1u) ? (fk & 0xffff0000u) : (fk << 16)), dn[c * 8u + k], f);
+            gn = fma(as_type<float>((k & 1u) ? (gk & 0xffff0000u) : (gk << 16)), dn[c * 8u + k], gn);
+          }
+        }
+      } else {
+        for (uint r = 0; r < R; ++r) {
+          f = fma(float(wf[ulong(i) * R + r]), dn[r], f);
+          gn = fma(float(wg[ulong(i) * R + r]), dn[r], gn);
+        }
       }
       v = (1.0f - metal::precise::tanh(f)) * h[i] + metal::precise::tanh(gn) * m[i];
       ss = fma(v, v, ss);
